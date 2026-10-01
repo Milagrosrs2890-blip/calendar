@@ -13,7 +13,7 @@ export function getMonthlyStatistics(events: CalendarEvent[], month: string): Mo
       scheduledHours += Math.max(0, (endHour * 60 + endMinute - startHour * 60 - startMinute) / 60)
     }
   }
-  const days = new Date(`${month}-01T12:00:00`).getDate() === 1 ? 31 : new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate()
+  const days = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate()
   return {
     passes: passes.length, passDays: dailyMap.size, uniqueTickets, scheduledHours,
     daily: Array.from({ length: days }, (_, index) => {

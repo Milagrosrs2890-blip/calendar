@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+:root { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif; color: #132949; background: #f5f7fb; font-synthesis: none; text-rendering: optimizeLegibility; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; }
+.field-label { display: flex; flex-direction: column; gap: 7px; color: #243955; font-size: 13px; font-weight: 600; }
+.field-input { width: 100%; height: 42px; border: 1px solid #dfe5ee; border-radius: 11px; background: white; padding: 0 12px; color: #142b4c; font-size: 14px; font-weight: 450; outline: none; transition: border-color .15s, box-shadow .15s; }
+.field-input:focus { border-color: #6aa0f7; box-shadow: 0 0 0 3px rgba(52,120,246,.12); }
+.field-input::placeholder { color: #a1acba; }
+.eyebrow { color: #8390a2; font-size: 10px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
+.tab-button { display: inline-flex; height: 36px; align-items: center; gap: 7px; border-radius: 9px; padding: 0 12px; color: #6c7b90; font-size: 12px; font-weight: 650; transition: .15s; }
+.tab-button-active { background: white; color: #1768e8; box-shadow: 0 1px 5px rgba(25,46,80,.1); }
+.view-switch { display: inline-flex; height: 32px; align-items: center; gap: 5px; border-radius: 8px; padding: 0 11px; color: #64738a; font-size: 12px; font-weight: 600; }
+.view-switch:hover { background: white; color: #1b5fc3; }
+.metric-icon { display: flex; width: 44px; height: 44px; align-items: center; justify-content: center; border-radius: 15px; }
+.metric-blue { background: #edf4ff; color: #3478f6; }.metric-violet { background: #f2efff; color: #8169e8; }.metric-teal { background: #e9f8f4; color: #289879; }.metric-amber { background: #fff5e6; color: #d98d1e; }
+
+/* FullCalendar adapts its dense defaults to the quieter dashboard surfaces. */
+.calendar-shell .fc { --fc-border-color: #edf0f5; --fc-page-bg-color: #fff; --fc-neutral-bg-color: #f8f9fb; --fc-today-bg-color: #f3f7ff; --fc-button-bg-color: #fff; --fc-button-border-color: #dce3ed; --fc-button-text-color: #193252; --fc-button-hover-bg-color: #f3f6fa; --fc-button-hover-border-color: #cfd8e5; --fc-button-active-bg-color: #1768e8; --fc-button-active-border-color: #1768e8; --fc-small-font-size: .76rem; font-size: 13px; }
+.calendar-shell .fc .fc-scrollgrid { border: 0; }
+.calendar-shell .fc th { border-left: 0; border-right: 0; }
+.calendar-shell .fc .fc-col-header-cell-cushion { padding: 11px 5px; color: #7a8798; font-size: 11px; font-weight: 650; text-decoration: none; text-transform: uppercase; letter-spacing: .05em; }
+.calendar-shell .fc .fc-daygrid-day-number { padding: 8px 9px 4px; color: #263b59; font-size: 12px; font-weight: 600; text-decoration: none; }
+.calendar-shell .fc .fc-day-other .fc-daygrid-day-number { color: #b0b9c6; }
+.calendar-shell .fc .fc-daygrid-day-frame { min-height: 100px; }
+.calendar-shell .fc .fc-daygrid-event { margin: 2px 4px; border: 0; border-radius: 7px; padding: 2px 4px; }
+.calendar-shell .fc-event-inner { display: flex; flex-direction: column; gap: 2px; overflow: hidden; white-space: normal; }
+.calendar-shell .fc-event-dot { display: none; }
+.calendar-shell .fc-event-label { overflow: hidden; font-size: 10px; font-weight: 650; line-height: 1.35; text-overflow: ellipsis; }
+.calendar-shell .fc-event-time { overflow: hidden; opacity: .8; font-size: 9px; line-height: 1.3; text-overflow: ellipsis; }
+.calendar-shell .fc .fc-daygrid-more-link { color: #1768e8; font-size: 10px; font-weight: 650; }
+.calendar-shell .fc .fc-highlight { background: rgba(52,120,246,.13); }
+.calendar-shell .fc .fc-timegrid-slot-label-cushion { color: #8a95a4; font-size: 10px; }
+.calendar-shell .fc .fc-timegrid-axis-cushion { color: #8a95a4; }
+.calendar-shell .fc .fc-timegrid-event { border: 0; border-radius: 8px; padding: 3px 5px; }
+.calendar-shell .fc .fc-list { border-color: #edf0f5; }
+.calendar-shell .fc .fc-list-day-cushion { background: #f7f9fc; }
+.calendar-shell .fc .fc-list-event:hover td { background: #f8faff; }
+
+@media (max-width: 640px) {
+  .calendar-shell { min-height: 590px; }
+  .calendar-shell .fc .fc-daygrid-day-frame { min-height: 76px; }
+  .calendar-shell .fc .fc-col-header-cell-cushion { padding: 8px 2px; font-size: 9px; }
+  .calendar-shell .fc .fc-daygrid-day-number { padding: 6px 5px 3px; font-size: 11px; }
+  .calendar-shell .fc .fc-daygrid-event { margin: 2px 2px; padding: 1px 3px; }
+  .calendar-shell .fc-event-label { font-size: 9px; }
+  .calendar-shell .fc-event-time { display: none; }
+}

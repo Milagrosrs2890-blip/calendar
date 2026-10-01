@@ -10,7 +10,7 @@ cp .env.example .env
 npm run dev
 ```
 
-Completa `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` en `.env`. Sin esas variables, la aplicación funciona en modo demostración local y no persiste los cambios entre recargas.
+Completa `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` en `.env`. Sin esas variables, la aplicación funciona en modo demostración local y guarda los cambios en el almacenamiento de este navegador.
 
 ## Supabase
 

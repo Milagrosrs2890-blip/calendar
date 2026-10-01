@@ -33,22 +33,28 @@ export async function getEvents(from?: string, to?: string): Promise<CalendarEve
   return (data ?? []).map((row) => fromRow(row as Record<string, unknown>))
 }
 
-export async function saveEvent(input: EventInput): Promise<void> {
+export async function saveEvents(inputs: EventInput[]): Promise<void> {
+  if (inputs.length === 0) return
   if (!supabase) {
     const current = demoRead()
-    const next: CalendarEvent = { ...input, id: input.id ?? crypto.randomUUID(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ratifications: input.ratifications }
-    localStorage.setItem(demoStorageKey, JSON.stringify([next, ...current.filter((event) => event.id !== input.id)]))
+    const replacements = inputs.map((input) => ({ ...input, id: input.id ?? crypto.randomUUID(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ratifications: input.ratifications } as CalendarEvent))
+    const replacedIds = new Set(inputs.flatMap((input) => input.id ? [input.id] : []))
+    localStorage.setItem(demoStorageKey, JSON.stringify([...replacements, ...current.filter((event) => !replacedIds.has(event.id))]))
     return
   }
-  const { error } = await supabase.rpc('save_calendar_event', {
-    p_event_id: input.id ?? null, p_event_date: input.eventDate, p_status: input.status,
-    p_all_day: input.allDay, p_start_time: input.startTime || null, p_end_time: input.endTime || null,
-    p_pass_name: input.passName || null, p_jira_ticket: input.jiraTicket || null, p_jira_link: input.jiraLink || null,
-    p_note: input.note || null,
-    p_ratifications: input.ratifications.map((item) => ({ type: item.type, start_time: item.startTime, end_time: item.endTime })),
+  const { error } = await supabase.rpc('save_calendar_events', {
+    p_events: inputs.map((input) => ({
+      event_id: input.id ?? null, event_date: input.eventDate, status: input.status,
+      all_day: input.allDay, start_time: input.startTime || null, end_time: input.endTime || null,
+      pass_name: input.passName || null, jira_ticket: input.jiraTicket || null, jira_link: input.jiraLink || null,
+      note: input.note || null,
+      ratifications: input.ratifications.map((item) => ({ type: item.type, start_time: item.startTime, end_time: item.endTime })),
+    })),
   })
   if (error) throw error
 }
+
+export async function saveEvent(input: EventInput): Promise<void> { return saveEvents([input]) }
 
 export async function deleteEvent(id: string): Promise<void> {
   if (!supabase) {
