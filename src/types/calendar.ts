@@ -8,6 +8,22 @@ export interface Ratification {
   endTime: string
 }
 
+export interface RatificationRecord {
+  id: string
+  eventDate: string
+  activity?: string | null
+  app?: string | null
+  startTime: string
+  endTime: string
+  hours: number
+  compHours?: number | null
+  compDates?: string[] | null
+  jiraTicket?: string | null
+  jiraLink?: string | null
+  obs1?: string | null
+  obs2?: string | null
+}
+
 export interface CalendarEvent {
   id: string
   userId?: string | null
