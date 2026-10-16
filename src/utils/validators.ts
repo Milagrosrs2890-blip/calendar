@@ -1,10 +1,11 @@
 import type { EventInput } from '@/types/calendar'
+import { isPassStatus } from '@/types/calendar'
 
 export function validateEvent(input: EventInput): string[] {
   const errors: string[] = []
   if (!input.eventDate) errors.push('Selecciona una fecha.')
-  if (input.status === 'PASS_ASSIGNED') {
-    if (!input.passName?.trim()) errors.push('Añade una descripción para el pase.')
+  if (isPassStatus(input.status)) {
+    if (!input.passName?.trim()) errors.push('Indica el tipo de pase.')
     if (input.allDay) errors.push('Un pase debe tener horario.')
     if (!input.ratifications.some((item) => item.type === 'TOTAL')) errors.push('Añade el horario de ratificación total.')
   } else if (!input.allDay) {

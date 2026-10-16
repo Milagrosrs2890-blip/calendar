@@ -1,149 +1,90 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Clock, CheckCircle2, AlertCircle, ArrowDownToLine } from 'lucide-react'
-import type { RatificationRecord } from '@/types/calendar'
-import { getRatifications, calculateRatificationTotals } from '@/services/ratifications.service'
+import { useMemo, useState } from 'react'
+import { ArrowDownToLine, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, CircleAlert, Clock3, Eye, FileText, LoaderCircle, Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import { format, parseISO } from 'date-fns'
+import type { CalendarEvent, RatificationRecord, RatificationStatus } from '@/types/calendar'
+import { RATIFICATION_STATUS_META } from '@/types/calendar'
+import { createRatificationsCsv, downloadCsv } from '@/services/ratifications.service'
+import { deleteRatification } from '@/services/events.service'
+import { dateToIso } from '@/utils/validators'
+import { monthLabel, monthOf, shiftMonth, toRatificationRecords } from '@/utils/hours'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
+import { RatificationEditDialog } from '@/components/reports/RatificationEditDialog'
 
-export function RatificationsPage() {
-  const [allRatifications, setAllRatifications] = useState<RatificationRecord[]>([])
-  const [loading, setLoading] = useState(true)
+interface Props {
+  events: CalendarEvent[]; isEditor: boolean; applications: string[]
+  onNew: () => void; onViewEvent: (event: CalendarEvent) => void; onEditEvent: (event: CalendarEvent) => void; onChanged: (notice?: string) => void
+}
+const currentMonth = dateToIso(new Date()).slice(0, 7)
+const statuses = Object.keys(RATIFICATION_STATUS_META) as RatificationStatus[]
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const data = await getRatifications()
-        setAllRatifications(data)
-      } finally {
-        setLoading(false)
-      }
-    })()
-  }, [])
-
-  const totals = useMemo(() => calculateRatificationTotals(allRatifications), [allRatifications])
-
-  function getWeekday(dateStr: string): string {
-    const date = new Date(dateStr + 'T12:00:00')
-    return new Intl.DateTimeFormat('es', { weekday: 'long' }).format(date)
-  }
-
-  function download() {
-    const headers = ['Fecha', 'Día', 'Actividad', 'App', 'Hora Inicio', 'Hora Fin', 'Horas', 'Horas Comp.', 'Fechas Compen.', 'Nro Ticket', 'Obs1', 'Obs2']
-    const rows = allRatifications.map((r) => [
-      r.eventDate,
-      getWeekday(r.eventDate),
-      r.activity || '',
-      r.app || '',
-      r.startTime,
-      r.endTime,
-      r.hours.toString(),
-      (r.compHours ?? '').toString(),
-      (r.compDates?.join(' | ') || ''),
-      r.jiraTicket || '',
-      r.obs1 || '',
-      r.obs2 || '',
-    ])
-    const csv = [headers, ...rows].map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n')
-    const blob = new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = 'ratificaciones.csv'
-    anchor.click()
-    URL.revokeObjectURL(url)
-  }
-
-  const statsCards = [
-    { label: 'Total hrs', value: totals.totalHours.toFixed(1), icon: Clock, color: 'blue' },
-    { label: 'Horas Comp', value: totals.compHours.toFixed(1), icon: CheckCircle2, color: 'emerald' },
-    { label: 'Dif. Hrs', value: totals.diffHours.toFixed(1), icon: AlertCircle, color: 'amber' },
+export function RatificationsPage({ events, isEditor, applications, onNew, onViewEvent, onEditEvent, onChanged }: Props) {
+  const [month, setMonth] = useState(currentMonth)
+  const [app, setApp] = useState('')
+  const [status, setStatus] = useState('')
+  const [search, setSearch] = useState('')
+  const [editing, setEditing] = useState<RatificationRecord | null>(null)
+  const [deleting, setDeleting] = useState<RatificationRecord | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const all = useMemo(() => toRatificationRecords(events), [events])
+  const appOptions = useMemo(() => [...new Set([...applications, ...all.flatMap((item) => item.app ? [item.app] : [])])].sort(), [applications, all])
+  const inMonth = useMemo(() => all.filter((item) => monthOf(item.eventDate) === month), [all, month])
+  const rows = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    return inMonth.filter((item) => (!app || item.app === app) && (!status || item.status === status)
+      && (!term || [item.activity, item.app, item.jiraTicket, item.observation, item.note].some((value) => value?.toLowerCase().includes(term))))
+  }, [inMonth, app, status, search])
+  const count = (...list: RatificationStatus[]) => inMonth.filter((item) => list.includes(item.status)).length
+  const cards = [
+    { label: 'Total ratificaciones', value: inMonth.length, icon: FileText, tone: 'blue' },
+    { label: 'Completadas', value: count('COMPLETED'), icon: CheckCircle2, tone: 'emerald' },
+    { label: 'Pendientes', value: count('PENDING', 'PARTIAL'), icon: Clock3, tone: 'amber' },
+    { label: 'Con observación', value: count('OBSERVED'), icon: CircleAlert, tone: 'red' },
   ]
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div>
-          <p className="eyebrow">Seguimiento</p>
-          <h2 className="mt-1 text-2xl font-bold tracking-tight text-[#11264a]">Ratificaciones/compensación de horas</h2>
-          <p className="mt-1 text-sm text-slate-500">Control de pases, horas y compensaciones registradas.</p>
-        </div>
-        <Button variant="outline" onClick={download}>
-          <ArrowDownToLine size={16} />
-          Descargar CSV
-        </Button>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {statsCards.map(({ label, value, icon: Icon, color }) => (
-          <Card key={label} className="flex items-center gap-4 p-5">
-            <div className={`metric-icon metric-${color}`}>
-              <Icon size={19} />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-slate-500">{label}</p>
-              <p className="mt-1 text-2xl font-bold tracking-tight text-[#152d51]">{value}</p>
-            </div>
-          </Card>
-        ))}
-      </div>
-
-      <Card className="overflow-hidden">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-          <div>
-            <h3 className="font-bold text-[#193252]">Detalle de ratificaciones</h3>
-            <p className="mt-1 text-xs text-slate-500">Una fila por bloque de horas registrado.</p>
-          </div>
-          <Button variant="outline" size="sm" onClick={download}>
-            <ArrowDownToLine size={15} />
-            CSV
-          </Button>
-        </div>
-        <div className="overflow-x-auto">
-          {loading ? (
-            <div className="flex h-64 items-center justify-center text-sm text-slate-400">Cargando ratificaciones…</div>
-          ) : allRatifications.length === 0 ? (
-            <div className="flex h-64 items-center justify-center text-sm text-slate-400">No hay ratificaciones registradas.</div>
-          ) : (
-            <table className="w-full min-w-[1200px] text-left text-sm">
-              <thead className="bg-[#f8f9fb] text-xs text-slate-500">
-                <tr>
-                  {['Fecha', 'Día', 'Actividad', 'App', 'Hora Inicio', 'Hora Fin', 'Horas', 'Horas Comp.', 'Fechas Compen.', 'Nro Ticket', 'Obs1', 'Obs2'].map((label) => (
-                    <th className="px-5 py-3 font-semibold" key={label}>
-                      {label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {allRatifications.map((record) => (
-                  <tr key={record.id} className="hover:bg-slate-50/70">
-                    <td className="px-5 py-3.5 text-slate-600">{record.eventDate}</td>
-                    <td className="px-5 py-3.5 text-slate-600 capitalize">{getWeekday(record.eventDate)}</td>
-                    <td className="px-5 py-3.5 text-slate-700">{record.activity || '—'}</td>
-                    <td className="px-5 py-3.5 font-medium text-slate-700">{record.app || '—'}</td>
-                    <td className="px-5 py-3.5 text-slate-600">{record.startTime}</td>
-                    <td className="px-5 py-3.5 text-slate-600">{record.endTime}</td>
-                    <td className="px-5 py-3.5 font-semibold text-slate-700">{record.hours.toFixed(1)}</td>
-                    <td className="px-5 py-3.5 text-slate-600">{record.compHours ?? '—'}</td>
-                    <td className="px-5 py-3.5 text-slate-600">{record.compDates?.join(', ') || '—'}</td>
-                    <td className="px-5 py-3.5">
-                      {record.jiraTicket ? (
-                        <a className="font-semibold text-blue-600 hover:underline" href={record.jiraLink || undefined} target="_blank" rel="noreferrer">
-                          {record.jiraTicket}
-                        </a>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td className="max-w-56 truncate px-5 py-3.5 text-slate-500">{record.obs1 || '—'}</td>
-                    <td className="max-w-56 truncate px-5 py-3.5 text-slate-500">{record.obs2 || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </Card>
+  const eventOf = (id: string) => events.find((event) => event.id === id)
+  async function remove() {
+    if (!deleting) return
+    setBusy(true); setError('')
+    try { await deleteRatification(deleting.eventId, deleting.type); const wasPass = deleting.type === 'TOTAL'; setDeleting(null); onChanged(wasPass ? 'Pase eliminado correctamente.' : 'Ratificación eliminada correctamente.') }
+    catch (reason) { setError(reason instanceof Error ? reason.message : 'No se pudo eliminar.') }
+    finally { setBusy(false) }
+  }
+  const columns = ['Fecha', 'Actividad', 'Aplicativo', 'Hora inicio', 'Hora fin', 'Horas', 'Ticket Jira', 'Estado', 'Obs.', ...(isEditor ? ['Acciones'] : [])]
+  return <div className="space-y-4">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex items-center gap-1 rounded-xl border border-[#e5eaf1] bg-white p-1"><button className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Mes anterior" onClick={() => setMonth(shiftMonth(month, -1))}><ChevronLeft size={16} /></button><span className="min-w-36 text-center text-sm font-semibold text-[#12294d]">{monthLabel(month)}</span><button className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Mes siguiente" onClick={() => setMonth(shiftMonth(month, 1))}><ChevronRight size={16} /></button></div>
+      {isEditor && <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-2 text-xs text-slate-500">Aplicativo<select className="field-input !h-9 !w-28 !text-xs" value={app} onChange={(e) => setApp(e.target.value)}><option value="">Todos</option>{appOptions.map((code) => <option key={code}>{code}</option>)}</select></label>
+        <label className="flex items-center gap-2 text-xs text-slate-500">Estado<select className="field-input !h-9 !w-36 !text-xs" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Todos</option>{statuses.map((value) => <option key={value} value={value}>{RATIFICATION_STATUS_META[value].label}</option>)}</select></label>
+        <div className="relative"><Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input className="field-input !h-9 !w-52 !pl-8 !text-xs" placeholder="Buscar actividad, ticket…" value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Buscar" /></div>
+        <Button size="sm" onClick={onNew}><Plus size={15} />Nueva ratificación</Button>
+        <Button size="sm" variant="outline" onClick={() => downloadCsv(`ratificaciones-${month}.csv`, createRatificationsCsv(rows))}><ArrowDownToLine size={15} />Exportar CSV</Button>
+      </div>}
     </div>
-  )
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{cards.map(({ label, value, icon: Icon, tone }) => <Card key={label} className="flex items-center gap-4 p-4"><div className={`metric-icon metric-${tone}`}><Icon size={20} /></div><div><p className="text-xl font-bold tracking-tight text-[#152d51]">{value}</p><p className="mt-0.5 text-xs text-slate-500">{label}</p></div></Card>)}</div>
+    <Card className="overflow-hidden"><div className="overflow-x-auto"><table className="w-full min-w-[960px] text-left text-sm">
+      <thead className="bg-[#f8f9fb] text-xs text-slate-500"><tr>{columns.map((label) => <th className="px-4 py-3 font-semibold" key={label}>{label}</th>)}</tr></thead>
+      <tbody className="divide-y divide-slate-100">{rows.map((record) => { const meta = RATIFICATION_STATUS_META[record.status]; const event = eventOf(record.eventId); return <tr key={record.key} className="hover:bg-slate-50/70">
+        <td className="whitespace-nowrap px-4 py-3 text-slate-600">{format(parseISO(record.eventDate), 'dd/MM/yyyy')}</td>
+        <td className="px-4 py-3 font-medium text-slate-700">{record.activity}{record.type === 'PARTIAL' && <span className="ml-1.5 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">Parcial</span>}</td>
+        <td className="px-4 py-3 text-slate-600">{record.app ?? '—'}</td><td className="px-4 py-3 text-slate-600">{record.startTime}</td><td className="px-4 py-3 text-slate-600">{record.endTime}</td>
+        <td className="px-4 py-3 font-semibold text-slate-700">{record.hours.toFixed(1)}</td>
+        <td className="px-4 py-3">{record.jiraTicket ? (record.jiraLink ? <a className="font-semibold text-blue-600 hover:underline" href={record.jiraLink} target="_blank" rel="noreferrer">{record.jiraTicket}</a> : record.jiraTicket) : '—'}</td>
+        <td className="px-4 py-3"><span className="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" style={{ color: meta.color, backgroundColor: meta.bg }}>{meta.label}</span></td>
+        <td className="max-w-56 truncate px-4 py-3 text-slate-500" title={record.observation ?? undefined}>{record.observation || '—'}</td>
+        {isEditor && <td className="px-4 py-3"><div className="flex items-center gap-1">
+          <button className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100" aria-label="Ver en el calendario" title="Ver en el calendario" onClick={() => event && onViewEvent(event)}><Eye size={15} /></button>
+          <button className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100" aria-label="Editar ratificación" title="Editar ratificación" onClick={() => setEditing(record)}><Pencil size={15} /></button>
+          <button className="rounded-lg p-1.5 text-red-500 hover:bg-red-50" aria-label="Eliminar" title={record.type === 'TOTAL' ? 'Eliminar pase' : 'Eliminar ratificación parcial'} onClick={() => { setError(''); setDeleting(record) }}><Trash2 size={15} /></button></div></td>}
+      </tr> })}
+      {rows.length === 0 && <tr><td colSpan={columns.length} className="px-5 py-14 text-center text-sm text-slate-400"><CalendarDays className="mx-auto mb-2" size={20} />{inMonth.length ? 'Ninguna ratificación coincide con los filtros.' : 'No hay ratificaciones registradas en este mes.'}</td></tr>}</tbody>
+    </table></div></Card>
+    <RatificationEditDialog record={editing} onClose={() => setEditing(null)} onSaved={() => onChanged('Ratificación actualizada.')} onEditPass={(id) => { const event = eventOf(id); setEditing(null); if (event) onEditEvent(event) }} />
+    <Dialog open={Boolean(deleting)} onOpenChange={(open) => { if (!open && !busy) setDeleting(null) }}><DialogContent className="sm:max-w-md"><DialogTitle className="text-lg font-bold text-[#11264a]">{deleting?.type === 'TOTAL' ? '¿Eliminar este pase?' : '¿Eliminar esta ratificación parcial?'}</DialogTitle>
+      <DialogDescription className="mt-2 text-sm leading-6 text-slate-600">{deleting?.type === 'TOTAL' ? <>La ratificación total es obligatoria, por lo que se eliminará <strong>todo el pase {deleting?.activity}</strong> con sus ratificaciones.</> : <>Se eliminará el bloque parcial de <strong>{deleting?.activity}</strong>.</>} Esta acción no se puede deshacer.</DialogDescription>
+      {error && <p role="alert" className="mt-3 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      <div className="mt-5 flex justify-end gap-2"><Button variant="outline" onClick={() => setDeleting(null)} disabled={busy}>Cancelar</Button><Button variant="destructive" onClick={() => void remove()} disabled={busy}>{busy && <LoaderCircle size={15} className="animate-spin" />}Eliminar</Button></div></DialogContent></Dialog>
+  </div>
 }

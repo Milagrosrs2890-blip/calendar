@@ -1,89 +1,26 @@
 import type { RatificationRecord } from '@/types/calendar'
+import { RATIFICATION_STATUS_META } from '@/types/calendar'
+import { summarize } from '@/utils/hours'
 
-export async function getRatifications(): Promise<RatificationRecord[]> {
-  // Mock data based on Excel example - will be replaced with Supabase query later
-  return [
-    {
-      id: '1',
-      eventDate: '2026-10-16',
-      activity: 'Parches de Windows',
-      app: 'SGCT',
-      startTime: '09:00',
-      endTime: '11:00',
-      hours: 2,
-      compHours: 2,
-      compDates: ['2026-10-17'],
-      jiraTicket: 'JIRA-001',
-      jiraLink: 'https://jira.example.com/browse/JIRA-001',
-      obs1: 'Parcial',
-      obs2: 'Completado',
-    },
-    {
-      id: '2',
-      eventDate: '2026-10-16',
-      activity: 'Parches de Windows',
-      app: 'SGCT',
-      startTime: '14:00',
-      endTime: '16:00',
-      hours: 2,
-      compHours: 0,
-      compDates: null,
-      jiraTicket: 'JIRA-001',
-      jiraLink: 'https://jira.example.com/browse/JIRA-001',
-      obs1: 'Pendiente',
-      obs2: 'Falta compensar',
-    },
-    {
-      id: '3',
-      eventDate: '2026-10-18',
-      activity: 'Parches de Seguridad',
-      app: 'VERINT',
-      startTime: '10:00',
-      endTime: '12:30',
-      hours: 2.5,
-      compHours: 1.5,
-      compDates: ['2026-10-19'],
-      jiraTicket: 'JIRA-002',
-      jiraLink: 'https://jira.example.com/browse/JIRA-002',
-      obs1: 'Parcial',
-      obs2: 'En progreso',
-    },
-    {
-      id: '4',
-      eventDate: '2026-10-20',
-      activity: 'Incorporación de PYME',
-      app: 'SGCT',
-      startTime: '09:00',
-      endTime: '17:00',
-      hours: 8,
-      compHours: 4,
-      compDates: ['2026-10-21', '2026-10-22'],
-      jiraTicket: 'JIRA-003',
-      jiraLink: 'https://jira.example.com/browse/JIRA-003',
-      obs1: 'Total',
-      obs2: 'Mitad compensada',
-    },
-    {
-      id: '5',
-      eventDate: '2026-10-22',
-      activity: 'Validación de Servicios',
-      app: 'VERINT',
-      startTime: '11:00',
-      endTime: '13:00',
-      hours: 2,
-      compHours: 0,
-      compDates: null,
-      jiraTicket: 'JIRA-004',
-      jiraLink: 'https://jira.example.com/browse/JIRA-004',
-      obs1: 'Pendiente',
-      obs2: null,
-    },
-  ]
+export function getWeekday(dateStr: string): string {
+  return new Intl.DateTimeFormat('es', { weekday: 'long' }).format(new Date(`${dateStr}T12:00:00`))
 }
 
-export function calculateRatificationTotals(records: RatificationRecord[]) {
-  const totalHours = records.reduce((sum, r) => sum + r.hours, 0)
-  const compHours = records.reduce((sum, r) => sum + (r.compHours ?? 0), 0)
-  const diffHours = totalHours - compHours
-  return { totalHours, compHours, diffHours }
+export function createRatificationsCsv(records: RatificationRecord[]) {
+  const rows = [['Fecha', 'Día', 'Actividad', 'Aplicativo', 'Flujo', 'Tipo', 'Hora inicio', 'Hora fin', 'Horas', 'Estado', 'Horas compensadas', 'Fechas de compensación', 'Ticket Jira', 'Observaciones']]
+  for (const r of records) {
+    rows.push([r.eventDate, getWeekday(r.eventDate), r.activity, r.app ?? '', r.flow ?? '', r.type === 'TOTAL' ? 'Total' : 'Parcial', r.startTime, r.endTime, r.hours.toFixed(1),
+      RATIFICATION_STATUS_META[r.status].label, r.compHours.toFixed(1), r.compDates.join(' | '), r.jiraTicket ?? '', r.observation ?? ''])
+  }
+  return rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(',')).join('\r\n')
+}
+
+export const calculateRatificationTotals = summarize
+
+export function downloadCsv(name: string, csv: string) {
+  const blob = new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url; anchor.download = name; anchor.click()
+  URL.revokeObjectURL(url)
 }
