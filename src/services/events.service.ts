@@ -2,6 +2,8 @@ import { supabase } from '@/lib/supabase'
 import type { CalendarEvent, EventInput, Ratification } from '@/types/calendar'
 
 const demoStorageKey = 'qe-calendar-demo-events'
+const demoApplicationCodesKey = 'qe-calendar-demo-application-codes'
+const defaultApplicationCodes = ['SGCT', 'CCSG']
 
 function fromRow(row: Record<string, unknown>): CalendarEvent {
   return {
@@ -10,6 +12,8 @@ function fromRow(row: Record<string, unknown>): CalendarEvent {
     startTime: row.start_time ? String(row.start_time).slice(0, 5) : null,
     endTime: row.end_time ? String(row.end_time).slice(0, 5) : null,
     passName: row.pass_name ? String(row.pass_name) : null, jiraTicket: row.jira_ticket ? String(row.jira_ticket) : null,
+    appCode: row.app_code ? String(row.app_code) : null,
+    appFlow: row.app_flow === 'Regulares' || row.app_flow === 'QyG' ? row.app_flow : null,
     jiraLink: row.jira_link ? String(row.jira_link) : null, note: row.note ? String(row.note) : null,
     ratifications: ((row.calendar_event_ratifications ?? []) as Record<string, unknown>[]).map((item) => ({
       id: String(item.id), type: item.ratification_type as Ratification['type'],
@@ -33,6 +37,38 @@ export async function getEvents(from?: string, to?: string): Promise<CalendarEve
   return (data ?? []).map((row) => fromRow(row as Record<string, unknown>))
 }
 
+export async function getApplicationCodes(): Promise<string[]> {
+  if (!supabase) {
+    try {
+      const stored = JSON.parse(localStorage.getItem(demoApplicationCodesKey) ?? 'null') as unknown
+      if (Array.isArray(stored)) return [...new Set([...defaultApplicationCodes, ...stored.filter((item): item is string => typeof item === 'string')])].sort()
+    } catch { /* Use the built-in demo catalog if local storage has invalid data. */ }
+    return defaultApplicationCodes
+  }
+  const { data, error } = await supabase.from('calendar_applications').select('code').order('code')
+  if (error) throw error
+  return (data ?? []).map((row) => String(row.code))
+}
+
+export async function addApplicationCode(code: string): Promise<string> {
+  const normalized = code.trim().toUpperCase()
+  if (!normalized) throw new Error('Escribe un código de aplicativo.')
+  if (!/^[A-Z0-9_-]+$/.test(normalized)) throw new Error('Usa solo letras, números, guiones o guiones bajos.')
+  if (!supabase) {
+    const current = await getApplicationCodes()
+    if (current.includes(normalized)) throw new Error('Ese código ya está en el catálogo.')
+    localStorage.setItem(demoApplicationCodesKey, JSON.stringify([...current, normalized].sort()))
+    return normalized
+  }
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError) throw authError
+  if (!user) throw new Error('Inicia sesión como editora para agregar aplicativos.')
+  const { error } = await supabase.from('calendar_applications').insert({ code: normalized, created_by: user.id })
+  if (error?.code === '23505') throw new Error('Ese código ya está en el catálogo.')
+  if (error) throw error
+  return normalized
+}
+
 export async function saveEvents(inputs: EventInput[]): Promise<void> {
   if (inputs.length === 0) return
   if (!supabase) {
@@ -47,6 +83,7 @@ export async function saveEvents(inputs: EventInput[]): Promise<void> {
       event_id: input.id ?? null, event_date: input.eventDate, status: input.status,
       all_day: input.allDay, start_time: input.startTime || null, end_time: input.endTime || null,
       pass_name: input.passName || null, jira_ticket: input.jiraTicket || null, jira_link: input.jiraLink || null,
+      app_code: input.appCode || null, app_flow: input.appFlow || null,
       note: input.note || null,
       ratifications: input.ratifications.map((item) => ({ type: item.type, start_time: item.startTime, end_time: item.endTime })),
     })),

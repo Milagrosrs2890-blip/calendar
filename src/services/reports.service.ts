@@ -24,12 +24,12 @@ export function getMonthlyStatistics(events: CalendarEvent[], month: string): Mo
 }
 
 export function createCsv(events: CalendarEvent[], month: string) {
-  const rows = [['Fecha', 'Horario', 'Pase', 'Ticket Jira', 'Link', 'Estado', 'Nota']]
+  const rows = [['Fecha', 'Horario', 'Pase', 'Aplicativo', 'Flujo', 'Ticket Jira', 'Link', 'Estado', 'Nota']]
   for (const event of events.filter((item) => item.eventDate.startsWith(month))) {
     const time = event.status === 'PASS_ASSIGNED'
       ? event.ratifications.map((item) => `${item.type === 'TOTAL' ? 'Total' : 'Parcial'} ${item.startTime}–${item.endTime}`).join(' / ')
       : event.allDay ? 'Todo el día' : `${event.startTime ?? ''}–${event.endTime ?? ''}`
-    rows.push([event.eventDate, time, event.passName ?? '', event.jiraTicket ?? '', event.jiraLink ?? '', event.status, event.note ?? ''])
+    rows.push([event.eventDate, time, event.passName ?? '', event.appCode ?? '', event.appFlow ?? '', event.jiraTicket ?? '', event.jiraLink ?? '', event.status, event.note ?? ''])
   }
   return rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(',')).join('\r\n')
 }

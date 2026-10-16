@@ -1,10 +1,10 @@
-import { useMemo, useState, type FormEvent } from 'react'
-import { AlertCircle, CalendarDays, Clock3, Copy, ExternalLink, LoaderCircle, Trash2 } from 'lucide-react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { AlertCircle, CalendarDays, Check, Clock3, Copy, ExternalLink, LoaderCircle, Plus, Trash2 } from 'lucide-react'
 import { format, eachDayOfInterval, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import type { CalendarEvent, CalendarStatus, EventInput, Ratification } from '@/types/calendar'
 import { STATUS_META } from '@/types/calendar'
-import { saveEvents, deleteEvent } from '@/services/events.service'
+import { addApplicationCode, deleteEvent, getApplicationCodes, saveEvents } from '@/services/events.service'
 import { validateEvent } from '@/utils/validators'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
@@ -27,6 +27,12 @@ export function EventForm({ open, onOpenChange, initialDate, endDate, event, onS
   const [allDay, setAllDay] = useState(event?.allDay ?? false)
   const [dayTimes, setDayTimes] = useState<DayTime[]>(() => dates.map((date) => ({ date, startTime: event?.startTime ?? '09:00', endTime: event?.endTime ?? '12:00' })))
   const [passName, setPassName] = useState(event?.passName ?? '')
+  const [appCode, setAppCode] = useState(event?.appCode ?? '')
+  const [appFlow, setAppFlow] = useState<'Regulares' | 'QyG' | ''>(event?.appFlow ?? '')
+  const [applicationCodes, setApplicationCodes] = useState<string[]>(['SGCT', 'CCSG'])
+  const [showNewApplication, setShowNewApplication] = useState(false)
+  const [newApplication, setNewApplication] = useState('')
+  const [addingApplication, setAddingApplication] = useState(false)
   const [jiraTicket, setJiraTicket] = useState(event?.jiraTicket ?? '')
   const [jiraLink, setJiraLink] = useState(event?.jiraLink ?? '')
   const [note, setNote] = useState(event?.note ?? '')
@@ -34,6 +40,26 @@ export function EventForm({ open, onOpenChange, initialDate, endDate, event, onS
   const [errors, setErrors] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const isPass = status === 'PASS_ASSIGNED'
+  useEffect(() => {
+    if (!open) return
+    void getApplicationCodes().then(setApplicationCodes).catch((reason) => {
+      setErrors([reason instanceof Error ? reason.message : 'No se pudo cargar el catálogo de aplicativos.'])
+    })
+  }, [open])
+  async function addApplication() {
+    setAddingApplication(true)
+    setErrors([])
+    try {
+      const code = await addApplicationCode(newApplication)
+      setApplicationCodes((current) => [...new Set([...current, code])].sort())
+      setAppCode(code)
+      setAppFlow('')
+      setNewApplication('')
+      setShowNewApplication(false)
+    } catch (reason) {
+      setErrors([reason instanceof Error ? reason.message : 'No se pudo agregar el aplicativo.'])
+    } finally { setAddingApplication(false) }
+  }
   function changeDay(index: number, key: 'startTime' | 'endTime', value: string) {
     setDayTimes((current) => current.map((day, i) => i === index ? { ...day, [key]: value } : day))
   }
@@ -50,7 +76,8 @@ export function EventForm({ open, onOpenChange, initialDate, endDate, event, onS
     const inputs: EventInput[] = dayTimes.map((day) => ({
       id: event?.id, eventDate: day.date, status, allDay: isPass ? false : allDay,
       startTime: isPass ? undefined : (allDay ? undefined : day.startTime), endTime: isPass ? undefined : (allDay ? undefined : day.endTime),
-      passName, jiraTicket, jiraLink, note, ratifications: isPass ? ratifications : [],
+      passName, appCode: isPass ? appCode || undefined : undefined, appFlow: isPass && appCode === 'SGCT' ? appFlow || undefined : undefined,
+      jiraTicket, jiraLink, note, ratifications: isPass ? ratifications : [],
     }))
     const validation = inputs.flatMap((item) => validateEvent(item))
     if (validation.length) { setErrors([...new Set(validation)]); return }
@@ -75,17 +102,18 @@ export function EventForm({ open, onOpenChange, initialDate, endDate, event, onS
     <form onSubmit={submit} className="space-y-5">
       {!event && dates.length > 1 && <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4"><div className="mb-3 flex items-center gap-2 text-sm font-semibold text-blue-900"><Clock3 size={16} />Horario independiente por día</div><div className="max-h-48 space-y-2 overflow-y-auto pr-1">{dayTimes.map((day, index) => <div key={day.date} className="grid grid-cols-[1fr_110px_110px] items-center gap-2"><span className="text-sm capitalize text-slate-600">{format(parseISO(day.date), 'EEE d MMM', { locale: es })}</span><input aria-label={`Inicio ${day.date}`} type="time" className="field-input !h-9" value={day.startTime} onChange={(e) => changeDay(index, 'startTime', e.target.value)} /><input aria-label={`Fin ${day.date}`} type="time" className="field-input !h-9" value={day.endTime} onChange={(e) => changeDay(index, 'endTime', e.target.value)} /></div>)}</div></div>}
       <div className="grid gap-4 sm:grid-cols-2">
-        <label className="field-label">Estado<select className="field-input" value={status} onChange={(e) => setStatus(e.target.value as CalendarStatus)}>{statuses.map((value) => <option key={value} value={value}>{STATUS_META[value].label}</option>)}</select></label>
+        <label className="field-label">Estado<select className="field-input" value={status} onChange={(e) => setStatus(e.target.value as CalendarStatus)}>{statuses.map((value) => <option key={value} value={value}>{STATUS_META[value].label}</option>)}</select><span className="text-xs font-normal text-slate-400">Elige “Pase asignado” para mostrar aplicativo, flujo y ratificaciones.</span></label>
         {!isPass && <div className="flex items-center gap-3 self-end pb-2"><input id="all-day" type="checkbox" className="h-4 w-4 accent-[#1268e8]" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} /><label htmlFor="all-day" className="text-sm font-medium text-slate-700">Todo el día</label></div>}
       </div>
       {!isPass && !allDay && dates.length === 1 && <div className="grid gap-4 sm:grid-cols-2"><label className="field-label">Hora inicio<input type="time" className="field-input" value={dayTimes[0]?.startTime} onChange={(e) => changeDay(0, 'startTime', e.target.value)} /></label><label className="field-label">Hora fin<input type="time" className="field-input" value={dayTimes[0]?.endTime} onChange={(e) => changeDay(0, 'endTime', e.target.value)} /></label></div>}
       {isPass && <div className="space-y-4 rounded-2xl border border-blue-100 bg-[#f5f8ff] p-4"><div className="flex items-center justify-between"><div><p className="text-sm font-bold text-[#18345d]">Horarios de ratificación</p><p className="mt-0.5 text-xs text-slate-500">El horario total es obligatorio; el parcial es opcional.</p></div><label className="flex items-center gap-2 text-xs font-semibold text-blue-700"><input type="checkbox" checked={ratifications.some((item) => item.type === 'PARTIAL')} onChange={togglePartial} className="accent-blue-600" />Incluir parcial</label></div>{ratifications.map((item, index) => <div key={item.type} className="grid grid-cols-[1fr_1fr_1fr] items-end gap-3"><span className="pb-3 text-sm font-semibold text-slate-700">{item.type === 'TOTAL' ? 'Total' : 'Parcial'}</span><label className="field-label">Desde<input type="time" className="field-input" value={item.startTime} onChange={(e) => changeRatification(index, 'startTime', e.target.value)} /></label><label className="field-label">Hasta<input type="time" className="field-input" value={item.endTime} onChange={(e) => changeRatification(index, 'endTime', e.target.value)} /></label></div>)}</div>}
       {isPass && <label className="field-label">Nombre o descripción del pase<input className="field-input" placeholder="Ej. Ratificación de procesamiento" value={passName} onChange={(e) => setPassName(e.target.value)} /></label>}
+      {isPass && <fieldset className="space-y-3 rounded-2xl border border-slate-200 p-4"><legend className="px-1 text-sm font-semibold text-[#18345d]">Aplicativo <span className="font-normal text-slate-400">(opcional)</span></legend><div className="flex flex-wrap items-center gap-2">{applicationCodes.map((code) => <label key={code} className={`inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition-colors ${appCode === code ? 'border-blue-300 bg-blue-50 text-blue-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}><input type="radio" name="pass-application" value={code} checked={appCode === code} onChange={() => { setAppCode(code); if (code !== 'SGCT') setAppFlow('') }} className="sr-only" />{appCode === code && <Check size={15} aria-hidden="true" />}{code}</label>)}<Button type="button" variant="outline" size="icon" aria-label="Agregar aplicativo" title="Agregar aplicativo" onClick={() => setShowNewApplication((visible) => !visible)}><Plus size={17} /></Button></div>{showNewApplication && <div className="flex items-end gap-2"><label className="field-label min-w-0 flex-1">Nuevo código<input autoFocus className="field-input uppercase" maxLength={24} placeholder="Ej. APP01" value={newApplication} onChange={(e) => setNewApplication(e.target.value.toUpperCase())} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void addApplication() } }} /></label><Button type="button" size="icon" aria-label="Guardar aplicativo" title="Guardar aplicativo" onClick={() => void addApplication()} disabled={addingApplication || !newApplication.trim()}>{addingApplication ? <LoaderCircle size={17} className="animate-spin" /> : <Check size={17} />}</Button></div>}{appCode === 'SGCT' && <label className="field-label max-w-sm">Flujo <span className="font-normal text-slate-400">(opcional)</span><select className="field-input" value={appFlow} onChange={(e) => setAppFlow(e.target.value as 'Regulares' | 'QyG' | '')}><option value="">Sin especificar</option><option value="Regulares">Regulares</option><option value="QyG">QyG</option></select></label>}</fieldset>}
       <div className="grid gap-4 sm:grid-cols-2"><label className="field-label">Ticket Jira <span className="font-normal text-slate-400">(opcional)</span><input className="field-input" placeholder="CCCT-2451" value={jiraTicket} onChange={(e) => setJiraTicket(e.target.value.toUpperCase())} /></label><label className="field-label">Link del pase o ticket <span className="font-normal text-slate-400">(opcional)</span><div className="flex gap-2"><input type="url" className="field-input min-w-0" placeholder="https://…" value={jiraLink} onChange={(e) => setJiraLink(e.target.value)} /><Button type="button" variant="outline" size="icon" title="Copiar link" onClick={copyLink} disabled={!jiraLink}><Copy size={16} /></Button>{event?.jiraLink && <Button type="button" variant="outline" size="icon" title="Abrir link" onClick={() => window.open(event.jiraLink!, '_blank', 'noopener,noreferrer')}><ExternalLink size={16} /></Button>}</div></label></div>
       <label className="field-label">Nota breve <span className="font-normal text-slate-400">(opcional)</span><textarea className="field-input min-h-20 resize-y py-3" maxLength={200} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Añade información útil para la coordinación…" /><span className="text-right text-xs font-normal text-slate-400">{note.length} / 200</span></label>
       <div className="flex gap-3 rounded-xl bg-blue-50 px-3 py-3 text-xs leading-5 text-blue-900"><AlertCircle className="mt-0.5 shrink-0 text-blue-600" size={16} />Evita colocar información médica o personal sensible en las notas.</div>
       {errors.length > 0 && <div role="alert" className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">{errors.map((error) => <p key={error}>{error}</p>)}</div>}
-      <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-between">{event ? <Button type="button" variant="destructive" onClick={remove} disabled={busy}><Trash2 size={16} />Eliminar</Button> : <span /> }<div className="flex gap-2"><Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>Cancelar</Button><Button disabled={busy}>{busy && <LoaderCircle size={16} className="animate-spin" />}{event ? 'Actualizar' : 'Guardar'}</Button></div></div>
+      <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-between">{event && event.status !== 'PASS_ASSIGNED' ? <Button type="button" variant="destructive" onClick={remove} disabled={busy}><Trash2 size={16} />Eliminar registro</Button> : <span />}<div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>Cancelar</Button><Button disabled={busy}>{busy && <LoaderCircle size={16} className="animate-spin" />}{event ? 'Actualizar' : 'Guardar'}</Button></div></div>
     </form>
   </DialogContent></Dialog>
 }

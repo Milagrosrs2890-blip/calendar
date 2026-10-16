@@ -33,6 +33,8 @@ export interface CalendarEvent {
   startTime?: string | null
   endTime?: string | null
   passName?: string | null
+  appCode?: string | null
+  appFlow?: 'Regulares' | 'QyG' | null
   jiraTicket?: string | null
   jiraLink?: string | null
   note?: string | null
@@ -49,6 +51,8 @@ export interface EventInput {
   startTime?: string
   endTime?: string
   passName?: string
+  appCode?: string
+  appFlow?: 'Regulares' | 'QyG'
   jiraTicket?: string
   jiraLink?: string
   note?: string

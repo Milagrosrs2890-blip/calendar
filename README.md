@@ -1,4 +1,4 @@
-# Calendario de disponibilidad QE
+# Agenda Pases
 
 SPA para consultar y administrar la disponibilidad QE y los pases programados.
 
@@ -14,7 +14,7 @@ Completa `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` en `.env`. Sin esas vari
 
 ## Supabase
 
-Aplica `supabase/migrations/202610010001_calendar.sql`. Crea la cuenta de la editora en Supabase Auth y registra su UUID en `private.calendar_editors` desde el SQL Editor:
+Aplica las migraciones de `supabase/migrations/` en orden. Crea la cuenta de la editora en Supabase Auth y registra su UUID en `private.calendar_editors` desde el SQL Editor:
 
 ```sql
 insert into private.calendar_editors (user_id) values ('UUID-DE-LA-EDITORA');
