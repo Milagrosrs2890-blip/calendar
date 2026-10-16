@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { verifyEditor, signOut, getSession } from '@/services/auth.service'
-import { deleteEvent, eventToInput, getApplicationCodes, getEvents, saveEvent } from '@/services/events.service'
+import { deleteEvent, eventToInput, getApplicationCodes, getEvents, saveEvent, setEventFinished } from '@/services/events.service'
 import { AppHeader } from '@/components/layout/AppHeader'
 import { Sidebar, type ActiveTab } from '@/components/layout/Sidebar'
 import { QECalendar, type CalendarFocus } from '@/components/calendar/QECalendar'
@@ -80,6 +80,7 @@ export default function App() {
   async function logout() { try { await signOut() } catch (reason) { setError(reason instanceof Error ? reason.message : 'No se pudo cerrar sesión.') } }
   function changed(message?: string) { if (message) setNotice(message); void refresh() }
   async function changeStatus(event: CalendarEvent, status: CalendarStatus) { await saveEvent(eventToInput(event, { status })); changed(); }
+  async function toggleFinished(event: CalendarEvent, finished: boolean) { await setEventFinished(event.id, finished); changed() }
   async function removeEvent(event: CalendarEvent) { await deleteEvent(event.id); setSelectedId(null); changed('Registro eliminado correctamente.') }
 
   const sidebar = <Sidebar onNextPass={goNextPass} onNavigate={navigate} />
@@ -95,7 +96,7 @@ export default function App() {
           <div className="min-w-0">{loading ? <div className="flex min-h-[620px] items-center justify-center rounded-2xl border border-[#e5eaf1] bg-white text-sm text-slate-400">Cargando calendario…</div>
             : <QECalendar events={events} isEditor={isEditor} selectedDate={selectedDate} focus={focus} initialMonth={calendarMonth} onSelectDate={selectDate} onSelectEvent={selectEvent} onCreateRange={(start, end) => openForm(null, start, end)} onMonthChange={setCalendarMonth} />}</div>
           <CalendarSidePanel isEditor={isEditor} dayEvents={dayEvents} selectedDate={selectedDate} selectedEvent={selectedEvent} nextPass={nextPass} hours={monthHours} month={calendarMonth}
-            onSelectEvent={selectEvent} onNew={() => openForm(null, selectedDate)} onEdit={(event) => openForm(event, event.eventDate)} onChangeStatus={changeStatus} onDelete={removeEvent} onSeeAll={() => navigate('ratifications')} />
+            onSelectEvent={selectEvent} onNew={() => openForm(null, selectedDate)} onEdit={(event) => openForm(event, event.eventDate)} onChangeStatus={changeStatus} onToggleFinished={toggleFinished} onDelete={removeEvent} onSeeAll={() => navigate('ratifications')} />
         </div>}
         {activeTab === 'reports' && <ReportsPage events={events} isEditor={isEditor} applications={applications} />}
         {activeTab === 'ratifications' && <RatificationsPage events={events} isEditor={isEditor} applications={applications} onNew={() => openForm(null, today)} onViewEvent={showEvent} onEditEvent={(event) => openForm(event, event.eventDate)} onChanged={changed} />}

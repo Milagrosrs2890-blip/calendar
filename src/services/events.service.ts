@@ -15,6 +15,7 @@ function fromRow(row: Record<string, unknown>): CalendarEvent {
     appCode: row.app_code ? String(row.app_code) : null,
     appFlow: row.app_flow === 'Regulares' || row.app_flow === 'QyG' ? row.app_flow : null,
     jiraLink: row.jira_link ? String(row.jira_link) : null, note: row.note ? String(row.note) : null,
+    isFinished: Boolean(row.is_finished),
     ratifications: ((row.calendar_event_ratifications ?? []) as Record<string, unknown>[]).map((item) => ({
       id: String(item.id), type: item.ratification_type as Ratification['type'],
       startTime: String(item.start_time).slice(0, 5), endTime: String(item.end_time).slice(0, 5),
@@ -75,7 +76,7 @@ export async function saveEvents(inputs: EventInput[]): Promise<void> {
   if (inputs.length === 0) return
   if (!supabase) {
     const current = demoRead()
-    const replacements = inputs.map((input) => ({ ...input, id: input.id ?? crypto.randomUUID(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ratifications: input.ratifications } as CalendarEvent))
+    const replacements = inputs.map((input) => ({ isFinished: current.find((event) => event.id === input.id)?.isFinished ?? false, ...input, id: input.id ?? crypto.randomUUID(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ratifications: input.ratifications } as CalendarEvent))
     const replacedIds = new Set(inputs.flatMap((input) => input.id ? [input.id] : []))
     localStorage.setItem(demoStorageKey, JSON.stringify([...replacements, ...current.filter((event) => !replacedIds.has(event.id))]))
     return
@@ -112,7 +113,7 @@ export function eventToInput(event: CalendarEvent, patch: Partial<EventInput> = 
     id: event.id, eventDate: event.eventDate, status: event.status, allDay: event.allDay,
     startTime: event.startTime ?? undefined, endTime: event.endTime ?? undefined, passName: event.passName ?? undefined,
     appCode: event.appCode ?? undefined, appFlow: event.appFlow ?? undefined, jiraTicket: event.jiraTicket ?? undefined,
-    jiraLink: event.jiraLink ?? undefined, note: event.note ?? undefined, ratifications: event.ratifications, ...patch,
+    jiraLink: event.jiraLink ?? undefined, note: event.note ?? undefined, isFinished: event.isFinished, ratifications: event.ratifications, ...patch,
   }
 }
 
@@ -141,5 +142,14 @@ export async function deleteRatification(eventId: string, type: Ratification['ty
     return
   }
   const { error } = await supabase.from('calendar_event_ratifications').delete().eq('event_id', eventId).eq('ratification_type', type)
+  if (error) throw error
+}
+
+export async function setEventFinished(id: string, isFinished: boolean): Promise<void> {
+  if (!supabase) {
+    localStorage.setItem(demoStorageKey, JSON.stringify(demoRead().map((event) => event.id === id ? { ...event, isFinished } : event)))
+    return
+  }
+  const { error } = await supabase.from('calendar_events').update({ is_finished: isFinished }).eq('id', id)
   if (error) throw error
 }

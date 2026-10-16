@@ -9,7 +9,7 @@ import type { CalendarApi, DateSelectArg, DatesSetArg, EventClickArg, EventInput
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { CalendarEvent } from '@/types/calendar'
-import { STATUS_META, isPassStatus } from '@/types/calendar'
+import { FINISHED_COLOR, STATUS_META, isPassStatus } from '@/types/calendar'
 import { dateToIso } from '@/utils/validators'
 import { monthLabel, primaryWindow } from '@/utils/hours'
 
@@ -34,12 +34,14 @@ export function QECalendar({ events, isEditor, selectedDate, focus, initialMonth
   const fcEvents: FcEventInput[] = events.map((event) => {
     const window = primaryWindow(event)
     const meta = STATUS_META[event.status]
+    const color = event.isFinished ? FINISHED_COLOR : meta.color
+    const base = isPassStatus(event.status) ? (event.passName || event.jiraTicket || 'Pase') : event.status === 'PENDING' && event.passName ? `${meta.label} · ${event.passName}` : meta.label
     const time = event.allDay ? 'Todo el día' : window ? `${window.start} - ${window.end}` : ''
     return {
-      id: event.id, title: isPassStatus(event.status) ? (event.passName || event.jiraTicket || 'Pase') : meta.label,
+      id: event.id, title: event.isFinished ? `✓ ${base}` : base,
       start: event.allDay || !window ? event.eventDate : `${event.eventDate}T${window.start}`,
       end: event.allDay || !window ? undefined : `${event.eventDate}T${window.end}`,
-      allDay: event.allDay || !window, backgroundColor: `${meta.color}1c`, borderColor: `${meta.color}55`, textColor: meta.color,
+      allDay: event.allDay || !window, backgroundColor: `${color}1c`, borderColor: `${color}55`, textColor: color,
       extendedProps: { event, time, app: event.appCode },
     }
   })

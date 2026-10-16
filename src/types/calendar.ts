@@ -47,6 +47,7 @@ export interface CalendarEvent {
   jiraTicket?: string | null
   jiraLink?: string | null
   note?: string | null
+  isFinished?: boolean
   ratifications: Ratification[]
   createdAt: string
   updatedAt: string
@@ -65,8 +66,14 @@ export interface EventInput {
   jiraTicket?: string
   jiraLink?: string
   note?: string
+  isFinished?: boolean
   ratifications: Ratification[]
 }
+
+/** Records that carry a type/application and can be marked as finished. */
+export const hasPassDetails = (status: CalendarStatus) => status === 'PASS_ASSIGNED' || status === 'PASS_CANCELLED' || status === 'PENDING'
+export const canFinish = (status: CalendarStatus) => status === 'PASS_ASSIGNED' || status === 'PENDING'
+export const FINISHED_COLOR = '#8a94a6'
 
 export const PASS_STATUSES: CalendarStatus[] = ['PASS_ASSIGNED', 'PASS_CANCELLED']
 export const isPassStatus = (status: CalendarStatus) => PASS_STATUSES.includes(status)

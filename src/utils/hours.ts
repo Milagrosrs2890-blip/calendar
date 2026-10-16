@@ -55,6 +55,6 @@ export function primaryWindow(event: CalendarEvent): { start: string; end: strin
 }
 
 export function nextPass(events: CalendarEvent[], today: string) {
-  return events.filter((event) => isActivePass(event) && event.eventDate >= today)
+  return events.filter((event) => isActivePass(event) && !event.isFinished && event.eventDate >= today)
     .sort((a, b) => a.eventDate.localeCompare(b.eventDate) || (primaryWindow(a)?.start ?? '').localeCompare(primaryWindow(b)?.start ?? ''))[0]
 }

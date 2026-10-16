@@ -3,7 +3,7 @@ import { Bell, CalendarDays, Clock3, ExternalLink, LoaderCircle, Pencil, Plus, S
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
 import type { CalendarEvent, CalendarStatus } from '@/types/calendar'
-import { STATUS_META, isPassStatus } from '@/types/calendar'
+import { FINISHED_COLOR, STATUS_META, canFinish, hasPassDetails, isPassStatus } from '@/types/calendar'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
@@ -26,8 +26,9 @@ function loadReminders(): ReminderState {
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return <div className="grid grid-cols-[88px_1fr] items-center gap-2 py-1.5 text-xs"><span className="text-slate-500">{label}</span><span className="min-w-0 font-medium text-[#1a2d4d]">{children}</span></div>
 }
-function StatusChip({ status }: { status: CalendarStatus }) {
-  const { color, label } = STATUS_META[status]
+function StatusChip({ status, finished }: { status: CalendarStatus; finished?: boolean }) {
+  const { label } = STATUS_META[status]
+  const color = finished ? FINISHED_COLOR : STATUS_META[status].color
   return <span className="inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold" style={{ color, backgroundColor: `${color}1c` }}>{label}</span>
 }
 
@@ -35,10 +36,10 @@ interface Props {
   isEditor: boolean; dayEvents: CalendarEvent[]; selectedDate: string; selectedEvent: CalendarEvent | null; nextPass?: CalendarEvent
   hours: HoursSummary; month: string
   onSelectEvent: (event: CalendarEvent) => void; onNew: () => void; onEdit: (event: CalendarEvent) => void
-  onChangeStatus: (event: CalendarEvent, status: CalendarStatus) => Promise<void>; onDelete: (event: CalendarEvent) => Promise<void>; onSeeAll: () => void
+  onChangeStatus: (event: CalendarEvent, status: CalendarStatus) => Promise<void>; onToggleFinished: (event: CalendarEvent, finished: boolean) => Promise<void>; onDelete: (event: CalendarEvent) => Promise<void>; onSeeAll: () => void
 }
 
-export function CalendarSidePanel({ isEditor, dayEvents, selectedDate, selectedEvent, nextPass, hours, month, onSelectEvent, onNew, onEdit, onChangeStatus, onDelete, onSeeAll }: Props) {
+export function CalendarSidePanel({ isEditor, dayEvents, selectedDate, selectedEvent, nextPass, hours, month, onSelectEvent, onNew, onEdit, onChangeStatus, onToggleFinished, onDelete, onSeeAll }: Props) {
   const [reminders, setReminders] = useState(loadReminders)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -61,7 +62,7 @@ export function CalendarSidePanel({ isEditor, dayEvents, selectedDate, selectedE
     <Card className="p-4"><div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-bold text-[#193252]">Próximo pase</h3>{isEditor ? <Button size="sm" className="h-8" onClick={onNew}><Plus size={14} />Nuevo</Button> : <button className="text-xs font-semibold text-blue-600 hover:underline" onClick={onSeeAll}>Ver todos →</button>}</div>
       {nextPass && nextWindow ? <button className="w-full space-y-2 text-left" onClick={() => onSelectEvent(nextPass)}>
         <p className="flex items-center gap-2 text-xs text-slate-600"><CalendarDays size={14} className="text-slate-400" />{longDate(nextPass.eventDate)}</p>
-        <p className="flex items-center gap-2 text-xs text-slate-600"><Clock3 size={14} className="text-slate-400" />{nextWindow.start} - {nextWindow.end} ({formatHoursLabel(nextWindow.hours)})<span className="ml-auto"><StatusChip status={nextPass.status} /></span></p>
+        <p className="flex items-center gap-2 text-xs text-slate-600"><Clock3 size={14} className="text-slate-400" />{nextWindow.start} - {nextWindow.end} ({formatHoursLabel(nextWindow.hours)})<span className="ml-auto"><StatusChip status={nextPass.status} finished={nextPass.isFinished} /></span></p>
         {nextPass.appCode && <p className="flex items-center gap-2 text-xs font-semibold text-slate-700"><Workflow size={14} className="text-slate-400" />{nextPass.appCode}</p>}
         <p className="flex items-center gap-2 text-xs text-slate-600"><Rows3 size={14} className="text-slate-400" />{nextPass.passName}{nextPass.note ? ` – ${nextPass.note}` : ''}</p>
       </button> : <p className="py-3 text-center text-xs text-slate-400">No hay pases próximos.</p>}
@@ -71,10 +72,13 @@ export function CalendarSidePanel({ isEditor, dayEvents, selectedDate, selectedE
       {dayEvents.length > 1 && <div className="mb-2 flex flex-wrap gap-1.5">{dayEvents.map((item) => <button key={item.id} onClick={() => onSelectEvent(item)} className={`rounded-lg border px-2 py-1 text-[11px] font-semibold ${item.id === event?.id ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>{item.passName || STATUS_META[item.status].label}</button>)}</div>}
       {event ? <div className="divide-y divide-slate-100">
         <Row label="Tipo">{event.passName || STATUS_META[event.status].label}</Row>
-        {isPass && <Row label="Aplicativo">{event.appCode ?? '—'}</Row>}
-        {isPass && <Row label="Flujo">{event.appFlow ?? '—'}</Row>}
+        {hasPassDetails(event.status) && <Row label="Aplicativo">{event.appCode ?? '—'}</Row>}
+        {hasPassDetails(event.status) && <Row label="Flujo">{event.appFlow ?? '—'}</Row>}
         <Row label="Horario">{scheduleText(event)}</Row>
-        <Row label="Estado">{isEditor ? <select className="field-input !h-8 !rounded-lg !px-2 !text-xs" value={event.status} disabled={busy} aria-label="Estado" onChange={(e) => void run(() => onChangeStatus(event, e.target.value as CalendarStatus))}>{statusOptions.map((value) => <option key={value} value={value}>{STATUS_META[value].label}</option>)}</select> : <StatusChip status={event.status} />}</Row>
+        <Row label="Estado">{isEditor ? <select className="field-input !h-8 !rounded-lg !px-2 !text-xs" value={event.status} disabled={busy} aria-label="Estado" onChange={(e) => void run(() => onChangeStatus(event, e.target.value as CalendarStatus))}>{statusOptions.map((value) => <option key={value} value={value}>{STATUS_META[value].label}</option>)}</select> : <StatusChip status={event.status} finished={event.isFinished} />}</Row>
+        {canFinish(event.status) && (isEditor
+          ? <Row label="Finalizado"><label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-700"><input type="checkbox" className="h-4 w-4 accent-slate-500" checked={Boolean(event.isFinished)} disabled={busy} onChange={(e) => void run(() => onToggleFinished(event, e.target.checked))} />{event.isFinished ? 'Finalizado' : 'Marcar como finalizado'}</label></Row>
+          : event.isFinished && <Row label="Finalizado"><StatusChip status={event.status} finished />{' '}<span className="text-slate-500">✓</span></Row>)}
         {event.jiraTicket && <Row label="Ticket Jira">{event.jiraLink ? <a className="inline-flex items-center gap-1 font-semibold text-blue-600 hover:underline" href={event.jiraLink} target="_blank" rel="noreferrer">{event.jiraTicket}<ExternalLink size={11} /></a> : event.jiraTicket}</Row>}
         {event.note && <Row label="Descripción"><span className="font-normal leading-5 text-slate-600">{event.note}</span></Row>}
         {isEditor && <div className="flex flex-wrap gap-2 pt-3"><Button size="sm" className="h-8" onClick={() => onEdit(event)}><Pencil size={13} />Editar</Button>
