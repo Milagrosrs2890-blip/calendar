@@ -14,8 +14,8 @@ const legend: { status: CalendarStatus; label: string }[] = [
 
 const rowClass = 'flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-xs text-blue-50/90 hover:bg-white/10'
 const external = [
-  { label: 'Squad QE', icon: Users, url: EXTERNAL_LINKS.squad },
-  { label: 'Documentación', icon: BookOpen, url: EXTERNAL_LINKS.docs },
+  { label: 'Equipo QE', hint: 'Calendario del equipo', icon: Users, url: EXTERNAL_LINKS.squad },
+  { label: 'Documentación', hint: 'Guías y procedimientos', icon: BookOpen, url: EXTERNAL_LINKS.docs },
 ]
 
 export function Sidebar({ onNextPass, onNavigate }: Props) {
@@ -33,11 +33,11 @@ export function Sidebar({ onNextPass, onNavigate }: Props) {
     <div><p className="mb-3 text-xs font-bold text-blue-100">Accesos rápidos</p><ul className="space-y-1">
       {quick.map(({ label, icon: Icon, action }) => <li key={label}><button type="button" onClick={action} className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-xs text-blue-50/90 hover:bg-white/10"><Icon size={15} className="text-blue-200/80" /><span className="flex-1">{label}</span><ChevronRight size={14} className="text-blue-200/50" /></button></li>)}
     </ul></div>
-    <div><p className="mb-3 text-xs font-bold text-blue-100">Accesos</p><ul className="space-y-1">
-      <li><button type="button" onClick={() => onNavigate('ratifications')} className={rowClass}><Ticket size={15} className="text-blue-200/80" /><span className="flex-1">Ver mis pases</span><ChevronRight size={14} className="text-blue-200/50" /></button></li>
-      {external.map(({ label, icon: Icon, url }) => <li key={label}>{url
-        ? <a href={url} target="_blank" rel="noopener noreferrer" className={rowClass}><Icon size={15} className="text-blue-200/80" /><span className="flex-1">{label}</span><ExternalLink size={13} className="text-blue-200/50" /></a>
-        : <button type="button" disabled title="Enlace pendiente de configurar" className={`${rowClass} cursor-not-allowed opacity-50 hover:bg-transparent`}><Icon size={15} className="text-blue-200/80" /><span className="flex-1">{label}</span><ExternalLink size={13} className="text-blue-200/50" /></button>}</li>)}
+    <div><p className="mb-3 text-xs font-bold text-blue-100">Accesos y contexto</p><ul className="space-y-1">
+      <li><button type="button" onClick={() => onNavigate('ratifications')} className={rowClass}><Ticket size={15} className="text-blue-200/80" /><span className="flex-1"><span className="block">Ver mis pases</span><span className="block text-[10px] text-blue-200/60">Vista general de tus pases</span></span><ChevronRight size={14} className="text-blue-200/50" /></button></li>
+      {external.map(({ label, hint, icon: Icon, url }) => <li key={label}>{url
+        ? <a href={url} target="_blank" rel="noopener noreferrer" className={rowClass}><Icon size={15} className="text-blue-200/80" /><span className="flex-1"><span className="block">{label}</span><span className="block text-[10px] text-blue-200/60">{hint}</span></span><ExternalLink size={13} className="text-blue-200/50" /></a>
+        : <button type="button" disabled title="Enlace pendiente de configurar" className={`${rowClass} cursor-not-allowed opacity-50 hover:bg-transparent`}><Icon size={15} className="text-blue-200/80" /><span className="flex-1"><span className="block">{label}</span><span className="block text-[10px] text-blue-200/60">{hint}</span></span><ExternalLink size={13} className="text-blue-200/50" /></button>}</li>)}
     </ul></div>
   </aside>
 }
