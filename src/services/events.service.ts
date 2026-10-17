@@ -1,11 +1,13 @@
 import { supabase } from '@/lib/supabase'
-import type { CalendarEvent, EventInput, Ratification } from '@/types/calendar'
+import type { CalendarEvent, Compensation, EventInput, Ratification } from '@/types/calendar'
+import { ratificationHours } from '@/utils/hours'
 
 const demoStorageKey = 'qe-calendar-demo-events'
 const demoApplicationCodesKey = 'qe-calendar-demo-application-codes'
 const defaultApplicationCodes = ['SGCT', 'CCSG']
 
 function fromRow(row: Record<string, unknown>): CalendarEvent {
+  const compensations = (row.calendar_ratification_compensations ?? []) as Record<string, unknown>[]
   return {
     id: String(row.id), userId: row.user_id ? String(row.user_id) : null,
     eventDate: String(row.event_date), status: row.status as CalendarEvent['status'], allDay: Boolean(row.all_day),
@@ -21,6 +23,9 @@ function fromRow(row: Record<string, unknown>): CalendarEvent {
       startTime: String(item.start_time).slice(0, 5), endTime: String(item.end_time).slice(0, 5),
       status: item.status as Ratification['status'], observation: item.observation ? String(item.observation) : null,
       compHours: Number(item.comp_hours ?? 0), compDates: ((item.comp_dates ?? []) as string[]).map(String),
+      compensations: compensations.filter((comp) => comp.ratification_type === item.ratification_type)
+        .map((comp) => ({ id: String(comp.id), date: String(comp.comp_date), hours: Number(comp.comp_hours) }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
     })),
     createdAt: String(row.created_at), updatedAt: String(row.updated_at),
   }
@@ -32,7 +37,7 @@ function demoRead(): CalendarEvent[] {
 
 export async function getEvents(from?: string, to?: string): Promise<CalendarEvent[]> {
   if (!supabase) return demoRead().filter((event) => (!from || event.eventDate >= from) && (!to || event.eventDate < to))
-  const query = supabase.from('calendar_events').select('*, calendar_event_ratifications(*)').order('event_date')
+  const query = supabase.from('calendar_events').select('*, calendar_event_ratifications(*), calendar_ratification_compensations(*)').order('event_date')
   if (from) query.gte('event_date', from)
   if (to) query.lt('event_date', to)
   const { data, error } = await query
@@ -117,18 +122,26 @@ export function eventToInput(event: CalendarEvent, patch: Partial<EventInput> = 
   }
 }
 
-export interface RatificationPatch { status: NonNullable<Ratification['status']>; observation: string; compHours: number; compDates: string[] }
+export interface RatificationPatch { status: NonNullable<Ratification['status']>; observation: string }
+
+/** Compensation totals and status are derived from the compensation log, so they are recalculated here as well as in the database trigger. */
+function withCompensations(item: Ratification, list: Compensation[]): Ratification {
+  const compHours = list.reduce((sum, comp) => sum + comp.hours, 0)
+  const scheduled = ratificationHours(item)
+  const status: Ratification['status'] = item.status === 'OBSERVED' ? 'OBSERVED' : compHours <= 0 ? 'PENDING' : compHours >= scheduled ? 'COMPLETED' : 'PARTIAL'
+  return { ...item, compensations: list, compHours, compDates: [...new Set(list.map((comp) => comp.date))].sort(), status }
+}
 
 export async function updateRatification(eventId: string, type: Ratification['type'], patch: RatificationPatch): Promise<void> {
   if (!supabase) {
     const events = demoRead().map((event) => event.id !== eventId ? event : {
-      ...event, ratifications: event.ratifications.map((item) => item.type === type ? { ...item, ...patch, observation: patch.observation || null } : item),
+      ...event, ratifications: event.ratifications.map((item) => item.type === type ? { ...item, status: patch.status, observation: patch.observation || null } : item),
     })
     localStorage.setItem(demoStorageKey, JSON.stringify(events))
     return
   }
   const { error } = await supabase.from('calendar_event_ratifications')
-    .update({ status: patch.status, observation: patch.observation.trim() || null, comp_hours: patch.compHours, comp_dates: patch.compDates })
+    .update({ status: patch.status, observation: patch.observation.trim() || null })
     .eq('event_id', eventId).eq('ratification_type', type)
   if (error) throw error
 }
@@ -151,5 +164,34 @@ export async function setEventFinished(id: string, isFinished: boolean): Promise
     return
   }
   const { error } = await supabase.from('calendar_events').update({ is_finished: isFinished }).eq('id', id)
+  if (error) throw error
+}
+
+export async function addCompensation(eventId: string, type: Ratification['type'], input: { date: string; hours: number }): Promise<void> {
+  if (!input.date) throw new Error('Escribe la fecha de compensación.')
+  if (!(input.hours > 0) || input.hours > 999) throw new Error('Las horas compensadas deben ser mayores que 0.')
+  if (!supabase) {
+    const events = demoRead().map((event) => event.id !== eventId ? event : {
+      ...event, ratifications: event.ratifications.map((item) => item.type !== type ? item
+        : withCompensations(item, [...(item.compensations ?? []), { id: crypto.randomUUID(), date: input.date, hours: input.hours }])),
+    })
+    localStorage.setItem(demoStorageKey, JSON.stringify(events))
+    return
+  }
+  const { error } = await supabase.from('calendar_ratification_compensations')
+    .insert({ event_id: eventId, ratification_type: type, comp_date: input.date, comp_hours: input.hours })
+  if (error) throw error
+}
+
+export async function deleteCompensation(eventId: string, type: Ratification['type'], compensationId: string): Promise<void> {
+  if (!supabase) {
+    const events = demoRead().map((event) => event.id !== eventId ? event : {
+      ...event, ratifications: event.ratifications.map((item) => item.type !== type ? item
+        : withCompensations(item, (item.compensations ?? []).filter((comp) => comp.id !== compensationId))),
+    })
+    localStorage.setItem(demoStorageKey, JSON.stringify(events))
+    return
+  }
+  const { error } = await supabase.from('calendar_ratification_compensations').delete().eq('id', compensationId)
   if (error) throw error
 }

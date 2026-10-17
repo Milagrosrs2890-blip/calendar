@@ -2,6 +2,12 @@ export type CalendarStatus = 'AVAILABLE' | 'PENDING' | 'UNAVAILABLE' | 'PASS_ASS
 export type RatificationType = 'TOTAL' | 'PARTIAL'
 export type RatificationStatus = 'COMPLETED' | 'PENDING' | 'PARTIAL' | 'OBSERVED'
 
+export interface Compensation {
+  id: string
+  date: string
+  hours: number
+}
+
 export interface Ratification {
   id?: string
   type: RatificationType
@@ -11,6 +17,7 @@ export interface Ratification {
   observation?: string | null
   compHours?: number
   compDates?: string[]
+  compensations?: Compensation[]
 }
 
 export interface RatificationRecord {
@@ -28,6 +35,7 @@ export interface RatificationRecord {
   observation: string | null
   compHours: number
   compDates: string[]
+  compensations: Compensation[]
   jiraTicket: string | null
   jiraLink: string | null
   note: string | null

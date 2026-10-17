@@ -6,7 +6,7 @@ import { RATIFICATION_STATUS_META } from '@/types/calendar'
 import { createRatificationsCsv, downloadCsv } from '@/services/ratifications.service'
 import { deleteRatification } from '@/services/events.service'
 import { dateToIso } from '@/utils/validators'
-import { monthLabel, monthOf, shiftMonth, toRatificationRecords } from '@/utils/hours'
+import { monthLabel, monthOf, shiftMonth, summarize, toRatificationRecords } from '@/utils/hours'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
@@ -29,6 +29,8 @@ export function RatificationsPage({ events, isEditor, applications, onNew, onVie
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const all = useMemo(() => toRatificationRecords(events), [events])
+  // Re-derive the record being edited so the dialog shows compensations as soon as they change.
+  const editingRecord = editing ? all.find((item) => item.key === editing.key) ?? null : null
   const appOptions = useMemo(() => [...new Set([...applications, ...all.flatMap((item) => item.app ? [item.app] : [])])].sort(), [applications, all])
   const inMonth = useMemo(() => all.filter((item) => monthOf(item.eventDate) === month), [all, month])
   const rows = useMemo(() => {
@@ -44,6 +46,9 @@ export function RatificationsPage({ events, isEditor, applications, onNew, onVie
     { label: 'Con observación', value: count('OBSERVED'), icon: CircleAlert, tone: 'red' },
   ]
   const eventOf = (id: string) => events.find((event) => event.id === id)
+  const monthTotals = useMemo(() => summarize(rows), [rows])
+  const overallTotals = useMemo(() => summarize(all), [all])
+  const owedLabel = (diff: number) => diff < 0 ? `${(-diff).toFixed(1)} h pendientes` : diff > 0 ? `${diff.toFixed(1)} h a favor` : 'Al día'
   async function remove() {
     if (!deleting) return
     setBusy(true); setError('')
@@ -51,7 +56,7 @@ export function RatificationsPage({ events, isEditor, applications, onNew, onVie
     catch (reason) { setError(reason instanceof Error ? reason.message : 'No se pudo eliminar.') }
     finally { setBusy(false) }
   }
-  const columns = ['Fecha', 'Actividad', 'Aplicativo', 'Hora inicio', 'Hora fin', 'Horas', 'Ticket Jira', 'Estado', 'Obs.', ...(isEditor ? ['Acciones'] : [])]
+  const columns = ['Fecha', 'Actividad', 'Aplicativo', 'Hora inicio', 'Hora fin', 'Horas', 'Comp.', 'Pendiente', 'Ticket Jira', 'Estado', 'Obs.', ...(isEditor ? ['Acciones'] : [])]
   return <div className="space-y-4">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex items-center gap-1 rounded-xl border border-[#e5eaf1] bg-white p-1"><button className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Mes anterior" onClick={() => setMonth(shiftMonth(month, -1))}><ChevronLeft size={16} /></button><span className="min-w-36 text-center text-sm font-semibold text-[#12294d]">{monthLabel(month)}</span><button className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Mes siguiente" onClick={() => setMonth(shiftMonth(month, 1))}><ChevronRight size={16} /></button></div>
@@ -71,6 +76,10 @@ export function RatificationsPage({ events, isEditor, applications, onNew, onVie
         <td className="px-4 py-3 font-medium text-slate-700">{record.activity}{record.type === 'PARTIAL' && <span className="ml-1.5 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">Parcial</span>}</td>
         <td className="px-4 py-3 text-slate-600">{record.app ?? '—'}</td><td className="px-4 py-3 text-slate-600">{record.startTime}</td><td className="px-4 py-3 text-slate-600">{record.endTime}</td>
         <td className="px-4 py-3 font-semibold text-slate-700">{record.hours.toFixed(1)}</td>
+        <td className="px-4 py-3 text-slate-600">{record.compHours.toFixed(1)}</td>
+        <td className="px-4 py-3 font-semibold">{record.hours - record.compHours > 0
+          ? <span className="text-red-600">{(record.hours - record.compHours).toFixed(1)}</span>
+          : record.compHours > record.hours ? <span className="text-emerald-700" title="Saldo a favor">+{(record.compHours - record.hours).toFixed(1)}</span> : <span className="text-slate-400">0.0</span>}</td>
         <td className="px-4 py-3">{record.jiraTicket ? (record.jiraLink ? <a className="font-semibold text-blue-600 hover:underline" href={record.jiraLink} target="_blank" rel="noreferrer">{record.jiraTicket}</a> : record.jiraTicket) : '—'}</td>
         <td className="px-4 py-3"><span className="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold" style={{ color: meta.color, backgroundColor: meta.bg }}>{meta.label}</span></td>
         <td className="max-w-56 truncate px-4 py-3 text-slate-500" title={record.observation ?? undefined}>{record.observation || '—'}</td>
@@ -81,7 +90,13 @@ export function RatificationsPage({ events, isEditor, applications, onNew, onVie
       </tr> })}
       {rows.length === 0 && <tr><td colSpan={columns.length} className="px-5 py-14 text-center text-sm text-slate-400"><CalendarDays className="mx-auto mb-2" size={20} />{inMonth.length ? 'Ninguna ratificación coincide con los filtros.' : 'No hay ratificaciones registradas en este mes.'}</td></tr>}</tbody>
     </table></div></Card>
-    <RatificationEditDialog record={editing} onClose={() => setEditing(null)} onSaved={() => onChanged('Ratificación actualizada.')} onEditPass={(id) => { const event = eventOf(id); setEditing(null); if (event) onEditEvent(event) }} />
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[
+      { label: 'Horas del mes', value: `${monthTotals.scheduled.toFixed(1)} h` },
+      { label: 'Compensadas del mes', value: `${monthTotals.compensated.toFixed(1)} h` },
+      { label: 'Pendiente del mes', value: owedLabel(monthTotals.diff) },
+      { label: 'Pendiente acumulado', value: owedLabel(overallTotals.diff) },
+    ].map(({ label, value }) => <Card key={label} className="p-4"><p className="text-xs text-slate-500">{label}</p><p className="mt-1 text-lg font-bold text-[#152d51]">{value}</p></Card>)}</div>
+    <RatificationEditDialog record={editingRecord} onClose={() => setEditing(null)} onSaved={(notice) => onChanged(notice ?? 'Ratificación actualizada.')} onEditPass={(id) => { const event = eventOf(id); setEditing(null); if (event) onEditEvent(event) }} />
     <Dialog open={Boolean(deleting)} onOpenChange={(open) => { if (!open && !busy) setDeleting(null) }}><DialogContent className="sm:max-w-md"><DialogTitle className="text-lg font-bold text-[#11264a]">{deleting?.type === 'TOTAL' ? '¿Eliminar este pase?' : '¿Eliminar esta ratificación parcial?'}</DialogTitle>
       <DialogDescription className="mt-2 text-sm leading-6 text-slate-600">{deleting?.type === 'TOTAL' ? <>La ratificación total es obligatoria, por lo que se eliminará <strong>todo el pase {deleting?.activity}</strong> con sus ratificaciones.</> : <>Se eliminará el bloque parcial de <strong>{deleting?.activity}</strong>.</>} Esta acción no se puede deshacer.</DialogDescription>
       {error && <p role="alert" className="mt-3 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}

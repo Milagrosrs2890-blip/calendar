@@ -22,7 +22,7 @@ export function toRatificationRecords(events: CalendarEvent[]): RatificationReco
     activity: event.passName ?? 'Pase', app: event.appCode ?? null, flow: event.appFlow ?? null,
     startTime: item.startTime, endTime: item.endTime, hours: ratificationHours(item),
     status: item.status ?? 'PENDING', observation: item.observation ?? null,
-    compHours: item.compHours ?? 0, compDates: item.compDates ?? [],
+    compHours: item.compHours ?? 0, compDates: item.compDates ?? [], compensations: item.compensations ?? [],
     jiraTicket: event.jiraTicket ?? null, jiraLink: event.jiraLink ?? null, note: event.note ?? null,
   }))).sort((a, b) => a.eventDate.localeCompare(b.eventDate) || a.startTime.localeCompare(b.startTime))
 }
